@@ -7,6 +7,6 @@ const {
 
 router.get("/questionnaires", getQuestionnaires);
 
-router.get("/questionnaire/:q_id", getQuestionnaireById);
+router.get("/questionnaire/:id", getQuestionnaireById);
 
 module.exports = router;

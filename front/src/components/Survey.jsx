@@ -1,19 +1,86 @@
 import { useEffect, useState } from "react";
-import api from "../api";
 import { Button, Col, Form, Modal, Row } from "react-bootstrap";
+import { v4 as uuid } from "uuid";
+import api from "../api";
 
-export default function Survey({ survey }) {
+export default function Survey({ survey, setCompletions }) {
   const [questions, setQuestions] = useState([]);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [show, setShow] = useState(false);
   const [answers, setAnswers] = useState({});
+  const [session_id, setSession_id] = useState("");
 
   const fetchQuestionnaireById = async () => {
     try {
-      const response = await api.get(`/questionnaire/${survey.data.id}`);
+      const response = await api.get(`/questionnaire/${survey.id}`);
       setQuestions(response.data.questions);
     } catch (error) {
       console.error(error.message);
+    }
+  };
+
+  const updateCompletions = async (amount_of_completions, id) => {
+    try {
+      const response = await api.post(`/updateCompletions`, {
+        amount_of_completions,
+        id,
+      });
+      console.log("Completions updated:", response.data);
+
+      setCompletions(amount_of_completions);
+    } catch (error) {
+      console.error("Failed to update completions:", error.message);
+    }
+  };
+
+  const submitAnswer = async () => {
+    try {
+      const currentQuestion = questions[questionIndex];
+      const question_id = currentQuestion.question_id;
+      const questionnaire_id = survey.id;
+      const answer = answers[question_id];
+
+      if (currentQuestion.question_type === "text") {
+        await api.post("/submit", {
+          session_id,
+          questionnaire_id,
+          question_id,
+          answers: {
+            answer_text: answer.answer_text,
+            answer_choice_id: null,
+          },
+        });
+      } else if (currentQuestion.question_type === "single_choice") {
+        await api.post("/submit", {
+          session_id,
+          questionnaire_id,
+          question_id,
+          answers: {
+            answer_text: answer.answer_text,
+            answer_choice_id: answer.answer_choice_id,
+          },
+        });
+      } else if (currentQuestion.question_type === "multiple_choice") {
+        if (Array.isArray(answer) && answer.length > 0) {
+          await api.post("/submit", {
+            session_id,
+            questionnaire_id,
+            question_id,
+            answers: answer,
+          });
+        }
+      }
+
+      if (questionIndex < questions.length - 1) {
+        setQuestionIndex(questionIndex + 1);
+      }
+    } catch (error) {
+      console.error("Error submitting answer:", error.message);
+      alert("Failed to submit answer. Please try again.");
+    }
+    if (questionIndex === Object.keys(answers).length - 1) {
+      await updateCompletions(survey.amount_of_completions + 1, survey.id);
+      finishSurvey();
     }
   };
 
@@ -49,11 +116,16 @@ export default function Survey({ survey }) {
             key={choice.id}
             type="radio"
             label={choice.text}
-            checked={answers[question.question_id] === choice.text}
+            checked={
+              answers[question.question_id]?.answer_choice_id === choice.id
+            }
             onChange={() =>
               setAnswers({
                 ...answers,
-                [question.question_id]: choice.text,
+                [question.question_id]: {
+                  answer_choice_id: choice.id,
+                  answer_text: choice.text,
+                },
               })
             }
           ></Form.Check>
@@ -66,14 +138,21 @@ export default function Survey({ survey }) {
             label={choice.text}
             checked={
               Array.isArray(answers[question.question_id]) &&
-              answers[question.question_id].includes(choice.text)
+              answers[question.question_id]
+                .map((q) => q.answer_choice_id)
+                .includes(choice.id)
             }
             onChange={() => {
               setAnswers((prevAnswers) => {
                 const currentAnswers = prevAnswers[question.question_id] || [];
                 const updatedAnswers = currentAnswers.includes(choice.text)
-                  ? currentAnswers.filter((answer) => answer !== choice.text)
-                  : [...currentAnswers, choice.text];
+                  ? currentAnswers.filter(
+                      (answer) => answer.answer_choice_id !== choice.id,
+                    )
+                  : [
+                      ...currentAnswers,
+                      { answer_choice_id: choice.id, answer_text: choice.text },
+                    ];
 
                 return {
                   ...prevAnswers,
@@ -88,45 +167,55 @@ export default function Survey({ survey }) {
           <Form.Control
             as="textarea"
             rows={5}
-            value={answers[question.question_id] || ""}
+            value={answers[question.question_id].answer_text || ""}
             onChange={(event) =>
               setAnswers({
                 ...answers,
-                [question.question_id]: event.target.value,
+                [question.question_id]: {
+                  answer_choice_id: null,
+                  answer_text: event.target.value,
+                },
               })
             }
           />
         );
       default:
-        return "radio";
+        return;
     }
   }
 
   function finishSurvey() {
     handleClose();
-    localStorage.removeItem(`surveyAnswers_${survey.data.id}`);
+    setSession_id("");
+    localStorage.removeItem(`surveyAnswers_${survey.id}`);
     createAnswersObject();
     setQuestionIndex(0);
   }
 
   useEffect(() => {
     fetchQuestionnaireById();
-    const savedAnswers = localStorage.getItem(
-      `surveyAnswers_${survey.data.id}`,
-    );
+    const savedAnswers = localStorage.getItem(`surveyAnswers_${survey.id}`);
     if (savedAnswers) {
       setAnswers(JSON.parse(savedAnswers));
     }
   }, []);
 
   useEffect(() => {
+    if (session_id === "") {
+      setSession_id(uuid);
+    }
     if (show) {
       localStorage.setItem(
-        `surveyAnswers_${survey.data.id}`,
+        `surveyAnswers_${survey.id}`,
         JSON.stringify(answers),
       );
     }
-  }, [answers, survey.data.id, show]);
+  }, [answers, survey.id, show]);
+
+  function resetSurvey() {
+    setQuestionIndex(0);
+    createAnswersObject();
+  }
 
   return (
     <>
@@ -135,7 +224,7 @@ export default function Survey({ survey }) {
       </Button>
       <Modal backdrop="static" show={show} onHide={handleClose}>
         <Modal.Header closeButton>
-          <Modal.Title>{survey.data.name}</Modal.Title>
+          <Modal.Title>{survey.name}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Row>
@@ -156,40 +245,38 @@ export default function Survey({ survey }) {
               <div className="mt-4 d-flex align-items-center justify-content-between">
                 <Button
                   size="sm"
-                  variant="primary"
-                  className="m-0 flex-grow-1"
-                  style={{ minWidth: "120px" }} // Adjust minWidth as needed
-                  onClick={() => setQuestionIndex(questionIndex - 1)}
-                  disabled={questionIndex === 0}
+                  variant="danger"
+                  style={{ maxWidth: "140px", minWidth: "140px" }}
+                  onClick={() => resetSurvey()}
                 >
-                  Previous question
+                  Reset
                 </Button>
                 <Form.Control
                   disabled
                   value={`Question ${questionIndex + 1} of ${questions.length}`}
                   size="sm"
-                  className="w-25 text-center mx-5"
+                  className="w-25 text-center"
                 />
                 <Button
                   size="sm"
                   variant="success"
-                  className="flex-grow-1"
-                  style={{ minWidth: "120px" }} // Adjust minWidth as needed
-                  onClick={() => setQuestionIndex(questionIndex + 1)}
-                  disabled={questionIndex === questions.length - 1}
+                  style={{ maxWidth: "140px", minWidth: "140px" }}
+                  onClick={submitAnswer}
                 >
-                  Next question
+                  Submit
                 </Button>
               </div>
             </Col>
           </Row>
         </Modal.Body>
         <Modal.Footer className="d-flex justify-content-between">
-          <Button size="sm" variant="warning" onClick={handleClose}>
+          <Button
+            size="sm"
+            variant="warning"
+            style={{ maxWidth: "140px", minWidth: "140px" }}
+            onClick={handleClose}
+          >
             Save and exit
-          </Button>
-          <Button size="sm" variant="success" onClick={finishSurvey}>
-            Finish survey
           </Button>
         </Modal.Footer>
       </Modal>

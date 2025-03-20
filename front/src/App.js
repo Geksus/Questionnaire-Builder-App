@@ -8,8 +8,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Login />} index={true} />
-        <Route path="/questionnaires" element={<QuestionnairesList />} />
+        <Route index={true} path="/" element={<QuestionnairesList />} />
         <Route path="/questionnaire/:id" element={<Survey />} />
       </Routes>
     </BrowserRouter>

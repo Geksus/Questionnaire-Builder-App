@@ -15,12 +15,6 @@ FLUSH PRIVILEGES;
 
 # Create tables
 ```
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS questionnaires (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -47,30 +41,20 @@ CREATE TABLE IF NOT EXISTS answer_choices (
 
 CREATE TABLE IF NOT EXISTS user_responses (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
+    session_id VARCHAR(255),
     questionnaire_id INT NOT NULL,
     question_id INT NOT NULL,
-    answer_text TEXT,  -- For text responses
-    completion_time TIME,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    answer_text TEXT,
+    answer_choice_id INT,
     FOREIGN KEY (questionnaire_id) REFERENCES questionnaires(id) ON DELETE CASCADE,
-    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS user_response_choices (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_response_id INT NOT NULL,
-    answer_choice_id INT NOT NULL,
-    FOREIGN KEY (user_response_id) REFERENCES user_responses(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
     FOREIGN KEY (answer_choice_id) REFERENCES answer_choices(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS questionnaire_completions (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
     questionnaire_id INT NOT NULL,
     completion_time TIME NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (questionnaire_id) REFERENCES questionnaires(id) ON DELETE CASCADE
 );
 
